@@ -1,0 +1,2 @@
+title,exam,skill,part,questionType,prompt,options,correctAnswers,acceptedAnswers,matches,points,explanation,tags
+"Beispiel · Lesen Teil 1","telc C1 Hochschule",reading,"Teil 1",single-choice,"Was empfiehlt der Text?","[{""id"":""option-1"",""text"":""Regelmäßig in kurzen Einheiten üben.""},{""id"":""option-2"",""text"":""Pausen auslassen.""}]","{""selectedOptionIds"":[""option-1""]}","{}","[]",1,"Die Beispielantwort stammt aus einem selbst verfassten Übungstext.","Lernen|Beispiel"

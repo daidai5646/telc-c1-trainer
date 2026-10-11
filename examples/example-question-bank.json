@@ -1,0 +1,121 @@
+{
+  "format": "telc-c1-trainer",
+  "version": 1,
+  "exportedAt": "2026-10-09T00:00:00.000Z",
+  "sets": [
+    {
+      "id": "sample-reading-set",
+      "title": "Beispiel · Lesen und Lernen",
+      "exam": "telc C1 Hochschule",
+      "skill": "reading",
+      "part": "Teil 1",
+      "instruction": "Lies den kurzen Text und beantworte die Fragen.",
+      "passageId": "sample-passage",
+      "tags": ["Bildung", "Beispiel"],
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    },
+    {
+      "id": "sample-listening-set",
+      "title": "Beispiel · Lernen im Alltag",
+      "exam": "telc C1 Hochschule",
+      "skill": "listening",
+      "part": "Teil 2",
+      "instruction": "Füge im Aufgaben-Editor eine eigene Hördatei hinzu.",
+      "tags": ["Alltag", "Beispiel"],
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    }
+  ],
+  "passages": [
+    {
+      "id": "sample-passage",
+      "title": "Lernen in kleinen Schritten",
+      "body": "Viele Studierende teilen große Lernziele in kurze Einheiten auf. So lässt sich der Fortschritt leichter beobachten.\n\nEine feste Lernzeit kann helfen, regelmäßig zu üben. Pausen bleiben dabei wichtig, denn Erholung unterstützt die Konzentration.",
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    }
+  ],
+  "questions": [
+    {
+      "id": "sample-q1",
+      "setId": "sample-reading-set",
+      "title": "Hauptaussage",
+      "prompt": "Was kann laut Text beim Lernen helfen?",
+      "questionType": "single-choice",
+      "points": 1,
+      "options": [
+        { "id": "a", "text": "Große Ziele in kurze Einheiten teilen." },
+        { "id": "b", "text": "Pausen vollständig vermeiden." },
+        { "id": "c", "text": "Nur einmal pro Monat üben." }
+      ],
+      "matches": [],
+      "correctAnswers": { "selectedOptionIds": ["a"] },
+      "acceptedAnswers": {},
+      "explanation": "Im Text steht, dass kurze Einheiten den Fortschritt leichter beobachten lassen.",
+      "tags": ["Lernstrategien"],
+      "difficulty": "easy",
+      "scoringRules": { "partialCredit": false, "ignoreCase": true, "trim": true },
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    },
+    {
+      "id": "sample-q2",
+      "setId": "sample-reading-set",
+      "title": "Richtig oder falsch",
+      "prompt": "Der Text empfiehlt, regelmäßig zu üben.",
+      "questionType": "true-false-not-stated",
+      "points": 1,
+      "options": [],
+      "matches": [],
+      "correctAnswers": { "value": "true" },
+      "acceptedAnswers": {},
+      "explanation": "Der Text nennt eine feste Lernzeit als mögliche Hilfe.",
+      "tags": ["Textverständnis"],
+      "difficulty": "easy",
+      "scoringRules": { "partialCredit": false, "ignoreCase": true, "trim": true },
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    },
+    {
+      "id": "sample-q3",
+      "setId": "sample-reading-set",
+      "title": "Wortschatz",
+      "prompt": "Pausen unterstützen die {{gap1}}.",
+      "questionType": "gap-fill",
+      "points": 1,
+      "options": [],
+      "matches": [],
+      "correctAnswers": {},
+      "acceptedAnswers": { "gap1": ["Konzentration"] },
+      "explanation": "Der letzte Satz des Textes verbindet Erholung mit Konzentration.",
+      "tags": ["Wortschatz"],
+      "difficulty": "medium",
+      "scoringRules": { "partialCredit": false, "ignoreCase": true, "trim": true },
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    },
+    {
+      "id": "sample-q4",
+      "setId": "sample-listening-set",
+      "title": "Höraufgabe nach eigener Audioergänzung",
+      "prompt": "Welche Aussage trifft zu?",
+      "questionType": "multiple-choice",
+      "points": 1,
+      "options": [
+        { "id": "a", "text": "Die Hördatei wird im Set gemeinsam genutzt." },
+        { "id": "b", "text": "Die Beispielbank enthält eine offizielle telc-Aufnahme." }
+      ],
+      "matches": [],
+      "correctAnswers": { "selectedOptionIds": ["a"] },
+      "acceptedAnswers": {},
+      "explanation": "Verknüpfte Audiodateien gehören zum Aufgaben-Set und werden nicht in jeder Frage dupliziert.",
+      "tags": ["Hören"],
+      "difficulty": "easy",
+      "scoringRules": { "partialCredit": false, "ignoreCase": true, "trim": true },
+      "createdAt": "2026-10-09T00:00:00.000Z",
+      "updatedAt": "2026-10-09T00:00:00.000Z"
+    }
+  ],
+  "audio": []
+}
