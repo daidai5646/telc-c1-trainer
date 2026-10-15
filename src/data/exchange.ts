@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import { ImportBundleSchema, FullBackupSchema, QuestionSchema, StudySetSchema, PassageSchema, now, id, type Attempt, type ImportBundle, type Question, type Settings, type PracticeDraft, type Submission } from '../domain/model'
+import { ImportBundleSchema, FullBackupSchema, QuestionSchema, StudySetSchema, SkillSchema, PassageSchema, defaultCategoryForSkill, now, id, type Attempt, type ImportBundle, type Question, type Settings, type PracticeDraft, type Submission } from '../domain/model'
 import { db } from './database'
 
 export type DuplicateStrategy = 'skip' | 'replace' | 'copy'
@@ -39,14 +39,18 @@ export async function previewImport(value: unknown): Promise<ImportPreview> {
 }
 
 export async function importQuestionBank(value: unknown, strategy: DuplicateStrategy): Promise<{ importedSets: number; importedQuestions: number; skippedSets: number; skippedQuestions: number }> {
-  const bundle = ImportBundleSchema.parse(value)
+  const bundle = normalizeBundleCategories(ImportBundleSchema.parse(value))
   return applyImport(bundle, strategy)
 }
 
 export async function restoreFullBackup(value: unknown, strategy: DuplicateStrategy) {
   const backup = FullBackupSchema.parse(value)
   validateReferences(backup)
-  return applyImport(backup, strategy, { attempts: backup.attempts, drafts: backup.drafts, submissions: backup.submissions, settings: backup.settings })
+  return applyImport(normalizeBundleCategories(backup), strategy, { attempts: backup.attempts, drafts: backup.drafts, submissions: backup.submissions, settings: backup.settings })
+}
+
+function normalizeBundleCategories(bundle: ImportBundle): ImportBundle {
+  return { ...bundle, sets: bundle.sets.map((set) => StudySetSchema.parse({ ...set, categoryId: set.categoryId ?? defaultCategoryForSkill(set.skill) })) }
 }
 
 async function applyImport(bundle: ImportBundle, strategy: DuplicateStrategy, extras?: { attempts: Attempt[]; drafts: PracticeDraft[]; submissions: Submission[]; settings: (Settings & { id: string })[] }) {
@@ -143,7 +147,8 @@ export function parseCsvQuestions(csv: string, setIdValue?: string): { set: Retu
   })
   const deterministicSetId = setIdValue ?? `csv-${stableHash([first.title, first.skill, first.part].join('|'))}`
   const stamp = now()
-  const set = StudySetSchema.parse({ id: deterministicSetId, title: first.title, exam: first.exam || 'telc C1 Hochschule', skill: first.skill, part: first.part, instruction: first.instruction || '', createdAt: stamp, updatedAt: stamp })
+  const skill = SkillSchema.parse(first.skill)
+  const set = StudySetSchema.parse({ id: deterministicSetId, title: first.title, exam: first.exam || 'telc C1 Hochschule', skill, categoryId: defaultCategoryForSkill(skill), part: first.part, instruction: first.instruction || '', createdAt: stamp, updatedAt: stamp })
   const questions = parsed.data.map((row, index) => {
     let options: unknown[] = []
     let correctAnswers: unknown = {}

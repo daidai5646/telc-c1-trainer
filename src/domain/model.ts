@@ -3,6 +3,14 @@ import { z } from 'zod'
 export const SkillSchema = z.enum(['reading', 'listening', 'writing', 'speaking'])
 export type Skill = z.infer<typeof SkillSchema>
 
+export const StudyCategorySchema = z.enum(['reading123', 'listening123', 'other'])
+export type StudyCategoryId = z.infer<typeof StudyCategorySchema>
+export function defaultCategoryForSkill(skill: Skill): StudyCategoryId {
+  if (skill === 'reading') return 'reading123'
+  if (skill === 'listening') return 'listening123'
+  return 'other'
+}
+
 export const QuestionTypeSchema = z.enum([
   'single-choice',
   'multiple-choice',
@@ -70,6 +78,7 @@ export const StudySetSchema = z.object({
   title: z.string().min(1),
   exam: z.string().default('telc C1 Hochschule'),
   skill: SkillSchema,
+  categoryId: StudyCategorySchema.optional(),
   part: z.string().min(1),
   instruction: z.string().default(''),
   passageId: z.string().optional(),

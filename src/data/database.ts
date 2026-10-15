@@ -13,8 +13,8 @@ class TrainerDatabase extends Dexie {
 
   constructor() {
     super('telc-c1-trainer')
-    this.version(2).stores({
-      sets: 'id, skill, part, updatedAt',
+    this.version(3).stores({
+      sets: 'id, skill, categoryId, part, updatedAt',
       questions: 'id, setId, questionType, updatedAt',
       passages: 'id, updatedAt',
       audio: 'id, createdAt',
