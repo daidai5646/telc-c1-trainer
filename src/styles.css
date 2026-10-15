@@ -15,3 +15,6 @@
 .listening-transcript-card .passage-body p{margin-bottom:18px}
 .review-card .user-answer{padding:7px 10px;background:#f2f5f0;border-radius:5px}
 @media(max-width:760px){.listening-transcript-card .passage-body{max-height:none;font-size:16px;line-height:1.9}}
+.listening-matching-practice .matching-list label{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:17px 0;font-size:18px;line-height:1.9}
+.listening-matching-practice .matching-list select{width:100%;height:auto;min-height:46px;font-size:15px}
+@media(max-width:760px){.listening-matching-practice .matching-list label{font-size:16px;line-height:1.85}.listening-matching-practice .matching-list select{font-size:14px}}

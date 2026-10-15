@@ -83,7 +83,7 @@ export function Practice() {
   const isListening = set.skill === 'listening'
   const hasListeningMatching = isListening && questions.some((question) => question.questionType === 'matching')
   const readableTime = `${Math.floor(timeLeft / 60).toString().padStart(2, '0')}:${(timeLeft % 60).toString().padStart(2, '0')}`
-  return <div className="practice-page">
+  return <div className={`practice-page ${hasListeningMatching ? 'listening-matching-practice' : ''}`}>
     <header className="practice-header"><Link to="/library" className="back-link">← Meine Aufgaben</Link><div className="practice-title"><div className="eyebrow">{isListening ? 'HÖRVERSTEHEN' : 'LESEVERSTEHEN'} · {set.part}</div><h1>{set.title}</h1></div><div className="practice-tools"><div className="mode-toggle" aria-label="练习模式"><button className={mode === 'practice' ? 'selected' : ''} onClick={() => selectMode('practice')}>练习</button><button className={mode === 'exam' ? 'selected' : ''} onClick={() => selectMode('exam')}>考试</button></div>{mode === 'exam' && <div className={`timer ${timeLeft < 300 ? 'timer-low' : ''}`} aria-live="polite">◷ {readableTime}</div>}</div></header>
     {set.instruction && <div className="instruction-strip"><span>AUFGABENSTELLUNG</span>{set.instruction}</div>}
     {error && <div className="alert error-alert" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
