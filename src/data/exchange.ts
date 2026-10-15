@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import { ImportBundleSchema, FullBackupSchema, QuestionSchema, StudySetSchema, SkillSchema, PassageSchema, defaultCategoryForSkill, now, id, type Attempt, type ImportBundle, type Question, type Settings, type PracticeDraft, type Submission } from '../domain/model'
+import { ImportBundleSchema, FullBackupSchema, QuestionSchema, StudySetSchema, SkillSchema, PassageSchema, categoryForSet, now, id, type Attempt, type ImportBundle, type Question, type Settings, type PracticeDraft, type Submission } from '../domain/model'
 import { db } from './database'
 
 export type DuplicateStrategy = 'skip' | 'replace' | 'copy'
@@ -50,7 +50,7 @@ export async function restoreFullBackup(value: unknown, strategy: DuplicateStrat
 }
 
 function normalizeBundleCategories(bundle: ImportBundle): ImportBundle {
-  return { ...bundle, sets: bundle.sets.map((set) => StudySetSchema.parse({ ...set, categoryId: set.categoryId ?? defaultCategoryForSkill(set.skill) })) }
+  return { ...bundle, sets: bundle.sets.map((set) => StudySetSchema.parse({ ...set, categoryId: !set.categoryId || set.categoryId === 'reading123' || set.categoryId === 'listening123' ? categoryForSet(set.skill, set.part, set.title) : set.categoryId })) }
 }
 
 async function applyImport(bundle: ImportBundle, strategy: DuplicateStrategy, extras?: { attempts: Attempt[]; drafts: PracticeDraft[]; submissions: Submission[]; settings: (Settings & { id: string })[] }) {
@@ -148,7 +148,7 @@ export function parseCsvQuestions(csv: string, setIdValue?: string): { set: Retu
   const deterministicSetId = setIdValue ?? `csv-${stableHash([first.title, first.skill, first.part].join('|'))}`
   const stamp = now()
   const skill = SkillSchema.parse(first.skill)
-  const set = StudySetSchema.parse({ id: deterministicSetId, title: first.title, exam: first.exam || 'telc C1 Hochschule', skill, categoryId: defaultCategoryForSkill(skill), part: first.part, instruction: first.instruction || '', createdAt: stamp, updatedAt: stamp })
+  const set = StudySetSchema.parse({ id: deterministicSetId, title: first.title, exam: first.exam || 'telc C1 Hochschule', skill, categoryId: categoryForSet(skill, first.part, first.title), part: first.part, instruction: first.instruction || '', createdAt: stamp, updatedAt: stamp })
   const questions = parsed.data.map((row, index) => {
     let options: unknown[] = []
     let correctAnswers: unknown = {}

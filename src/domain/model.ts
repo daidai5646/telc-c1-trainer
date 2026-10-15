@@ -3,12 +3,18 @@ import { z } from 'zod'
 export const SkillSchema = z.enum(['reading', 'listening', 'writing', 'speaking'])
 export type Skill = z.infer<typeof SkillSchema>
 
-export const StudyCategorySchema = z.enum(['reading123', 'listening123', 'other'])
+export const StudyCategorySchema = z.enum(['reading1', 'reading2', 'reading3', 'listening1', 'listening2', 'listening3', 'reading123', 'listening123', 'other'])
 export type StudyCategoryId = z.infer<typeof StudyCategorySchema>
 export function defaultCategoryForSkill(skill: Skill): StudyCategoryId {
-  if (skill === 'reading') return 'reading123'
-  if (skill === 'listening') return 'listening123'
+  if (skill === 'reading') return 'reading1'
+  if (skill === 'listening') return 'listening1'
   return 'other'
+}
+export function categoryForSet(skill: Skill, part: string, title = ''): StudyCategoryId {
+  if (skill !== 'reading' && skill !== 'listening') return 'other'
+  const match = `${part} ${title}`.match(/(?:teil|part|阅读|听力)\s*([123])|(?:^|\D)([123])(?:\D|$)/i)
+  const number = match?.[1] ?? match?.[2] ?? '1'
+  return `${skill}${number}` as StudyCategoryId
 }
 
 export const QuestionTypeSchema = z.enum([
