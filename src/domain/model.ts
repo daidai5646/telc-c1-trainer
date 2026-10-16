@@ -48,6 +48,7 @@ const BaseQuestionSchema = z.object({
   tags: z.array(z.string()).default([]),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
   scoringRules: z.object({ partialCredit: z.boolean().default(false), ignoreCase: z.boolean().default(true), trim: z.boolean().default(true) }).default(() => ({ partialCredit: false, ignoreCase: true, trim: true })),
+  order: z.number().int().nonnegative().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })

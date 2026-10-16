@@ -20,7 +20,20 @@ export function Library() {
   const [message, setMessage] = useState('')
   const [defaultExam, setDefaultExam] = useState('telc C1 Hochschule')
 
-  async function refresh() { const [allSets, allQuestions] = await Promise.all([db.sets.orderBy('updatedAt').reverse().toArray(), db.questions.toArray()]); setSets(allSets); setQuestions(allQuestions) }
+  async function refresh() {
+    const [allSets, allQuestions] = await Promise.all([db.sets.orderBy('updatedAt').reverse().toArray(), db.questions.toArray()])
+    allQuestions.sort(compareQuestionOrder)
+    const nextOrder = new Map<string, number>()
+    const backfilled: Question[] = []
+    for (const question of allQuestions) {
+      const order = question.order ?? nextOrder.get(question.setId) ?? 0
+      nextOrder.set(question.setId, Math.max(nextOrder.get(question.setId) ?? 0, order + 1))
+      if (question.order === undefined) { question.order = order; backfilled.push(question) }
+    }
+    if (backfilled.length) await db.questions.bulkPut(backfilled)
+    allQuestions.sort(compareQuestionOrder)
+    setSets(allSets); setQuestions(allQuestions)
+  }
   useEffect(() => { void refresh(); void db.settings.get('main').then((settings) => { if (settings?.defaultExam) setDefaultExam(settings.defaultExam) }).catch(() => setError('无法读取设置。')) }, [])
   const visibleSets = useMemo(() => skillFilter ? sets.filter((set) => set.skill === skillFilter) : sets, [sets, skillFilter])
   const resolvedCategory = (set: StudySet): StudyCategoryId => !set.categoryId || set.categoryId === 'reading123' || set.categoryId === 'listening123' ? categoryForSet(set.skill, set.part, set.title) : set.categoryId
@@ -95,7 +108,7 @@ export function Library() {
       return <section className="category-section" key={category.id}><button className="category-heading" aria-expanded={isOpen} onClick={() => setOpenCategories((current) => ({ ...current, [category.id]: !current[category.id] }))}><span className="category-heading-copy"><strong>{category.title}</strong><small>{category.sets.length} 个题组 · {questionCount} 道题</small></span><span className="category-chevron">{isOpen ? '⌃' : '⌄'}</span></button>{isOpen && (category.sets.length ? <div className="set-list">{category.sets.map(renderSetCard)}</div> : <div className="category-empty">还没有题组。导入对应技能的 JSON 后，题组会自动归入这里。</div>)}</section>
     })}</div>
     {setEditor && <SetEditor initial={setEditor === 'new' ? undefined : setEditor} defaultExam={defaultExam} onClose={() => setSetEditor(null)} onSave={async (set) => { await db.sets.put(set); setSetEditor(null); await refresh(); setMessage('题组已保存。') }} onError={setError} />}
-    {questionEditor && <QuestionEditor key={`${questionEditor.set.id}-${questionEditor.question?.id ?? 'new'}`} set={questionEditor.set} initial={questionEditor.question} onClose={() => setQuestionEditor(null)} onSave={async (question) => { await db.questions.put(question); setQuestionEditor(null); await refresh(); setMessage('题目已保存。') }} />}
+    {questionEditor && <QuestionEditor key={`${questionEditor.set.id}-${questionEditor.question?.id ?? 'new'}`} set={questionEditor.set} initial={questionEditor.question} onClose={() => setQuestionEditor(null)} onSave={async (question) => { if (!questionEditor.question) { const existing = await db.questions.where('setId').equals(question.setId).toArray(); question.order = Math.max(existing.length, existing.reduce((next, item) => Math.max(next, (item.order ?? -1) + 1), 0)) } await db.questions.put(question); setQuestionEditor(null); await refresh(); setMessage('题目已保存。') }} />}
   </div>
 }
 
@@ -159,7 +172,7 @@ function QuestionEditor({ set, initial, onClose, onSave }: { set: StudySet; init
     }
     const acceptedAnswers = Object.fromEntries(String(data.get('accepted') ?? '').split('\n').map((line) => line.split('=')).filter((parts) => parts.length >= 2).map((parts) => [parts[0]!.trim(), parts.slice(1).join('=').split('|').map((answer) => answer.trim()).filter(Boolean)]))
     const correctAnswers = type === 'single-choice' || type === 'multiple-choice' ? { selectedOptionIds: indexes.map((index) => options[index - 1]!.id) } : type === 'matching' || type === 'text-reconstruction' ? { pairs: pairMap } : type === 'true-false-not-stated' ? { value: data.get('truth') } : {}
-    const parsed = QuestionSchema.safeParse({ id: initial?.id ?? id(), setId: set.id, title: data.get('title'), prompt: data.get('prompt'), questionType: type, points: Number(data.get('points') || 1), options: ['single-choice', 'multiple-choice', 'matching', 'text-reconstruction'].includes(type) ? options : [], matches: ['matching', 'text-reconstruction'].includes(type) ? matches : [], correctAnswers, acceptedAnswers: type === 'gap-fill' ? acceptedAnswers : {}, explanation: data.get('explanation'), tags: String(data.get('tags') ?? '').split(',').map((x) => x.trim()).filter(Boolean), difficulty: data.get('difficulty'), scoringRules: { partialCredit: data.get('partialCredit') === 'on', ignoreCase: data.get('ignoreCase') === 'on', trim: true }, createdAt: initial?.createdAt ?? stamp, updatedAt: stamp })
+    const parsed = QuestionSchema.safeParse({ id: initial?.id ?? id(), setId: set.id, order: initial?.order, title: data.get('title'), prompt: data.get('prompt'), questionType: type, points: Number(data.get('points') || 1), options: ['single-choice', 'multiple-choice', 'matching', 'text-reconstruction'].includes(type) ? options : [], matches: ['matching', 'text-reconstruction'].includes(type) ? matches : [], correctAnswers, acceptedAnswers: type === 'gap-fill' ? acceptedAnswers : {}, explanation: data.get('explanation'), tags: String(data.get('tags') ?? '').split(',').map((x) => x.trim()).filter(Boolean), difficulty: data.get('difficulty'), scoringRules: { partialCredit: data.get('partialCredit') === 'on', ignoreCase: data.get('ignoreCase') === 'on', trim: true }, createdAt: initial?.createdAt ?? stamp, updatedAt: stamp })
     if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? '题目数据有误。'); return }
     void onSave(parsed.data).catch((cause) => setError(cause instanceof Error ? cause.message : '保存失败。'))
   }
@@ -183,3 +196,7 @@ function AudioPreview({ audioId }: { audioId: string }) {
 }
 
 function questionTypeName(type: QuestionType) { return ({ 'single-choice': '单选', 'multiple-choice': '多选', matching: '匹配', 'true-false-not-stated': '判断', 'text-reconstruction': '文本重构', 'gap-fill': '填空' })[type] }
+
+function compareQuestionOrder(a: Question, b: Question) {
+  return a.setId.localeCompare(b.setId) || (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+}

@@ -22,6 +22,7 @@ export function Practice() {
         if (!found) { setError('没有找到这个题组。'); setLoading(false); return }
         const [allQuestions, article, audioAsset, savedSettings, draft] = await Promise.all([db.questions.where('setId').equals(setId).toArray(), found.passageId ? db.passages.get(found.passageId) : undefined, found.audioId ? db.audio.get(found.audioId) : undefined, db.settings.get('main'), db.drafts.get(currentDraftId)])
         if (!alive) return
+        allQuestions.sort(compareQuestionOrder)
         setSet(found); setQuestions(wrongIds ? allQuestions.filter((q) => wrongIds.includes(q.id)) : allQuestions); setPassage(article ?? null); setAudio(audioAsset ?? null)
         setShowAnswers((savedSettings as (Settings & { id: string }) | undefined)?.showAnswersAfterSubmit ?? true)
         const seconds = found.modeDefaultSeconds ?? (savedSettings as (Settings & { id: string }) | undefined)?.defaultExamSeconds ?? 90 * 60
@@ -133,6 +134,10 @@ function formatAnswer(answer: Record<string, string | string[] | Record<string, 
 function typeName(type: Question['questionType']) { return ({ 'single-choice': '单选题', 'multiple-choice': '多选题', matching: 'Zuordnung', 'true-false-not-stated': 'Richtig / Falsch / Nicht im Text', 'text-reconstruction': 'Textrekonstruktion', 'gap-fill': '填空题' })[type] }
 
 function draftIdFor(setId: string, wrongKey: string) { return wrongKey ? `${setId}::wrong::${wrongKey}` : setId }
+
+function compareQuestionOrder(a: Question, b: Question) {
+  return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
+}
 
 function matchChoices(question: Question) {
   return question.options.length ? question.options : question.matches.filter((match) => match.answer).map((match) => ({ id: match.answer!, text: match.answer! }))

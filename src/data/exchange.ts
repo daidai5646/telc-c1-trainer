@@ -11,6 +11,7 @@ export async function makeQuestionBankBundle(): Promise<ImportBundle> {
 
 async function buildQuestionBankBundle(includeAllAudio: boolean): Promise<ImportBundle> {
   const [sets, questions, passages, allAudio] = await Promise.all([db.sets.toArray(), db.questions.toArray(), db.passages.toArray(), db.audio.toArray()])
+  questions.sort(compareQuestionOrder)
   const audioIds = new Set(sets.flatMap((set) => set.audioId ? [set.audioId] : []))
   const audioAssets = includeAllAudio ? allAudio : allAudio.filter((asset) => audioIds.has(asset.id))
   const audio = await Promise.all(audioAssets.map(async (asset) => ({
@@ -70,10 +71,14 @@ async function applyImport(bundle: ImportBundle, strategy: DuplicateStrategy, ex
       result.importedSets++
     }
     const existingQuestionIds = new Set(await db.questions.toCollection().primaryKeys() as string[])
+    const nextOrder = new Map<string, number>()
+    for (const question of await db.questions.toArray()) nextOrder.set(question.setId, Math.max(nextOrder.get(question.setId) ?? 0, (question.order ?? -1) + 1))
     for (const question of prepared.questions) {
       if (blocked.has(question.setId)) { result.skippedQuestions++; continue }
       if (strategy === 'skip' && existingQuestionIds.has(question.id)) { result.skippedQuestions++; continue }
-      await db.questions.put(question)
+      const order = nextOrder.get(question.setId) ?? 0
+      await db.questions.put({ ...question, order })
+      nextOrder.set(question.setId, order + 1)
       result.importedQuestions++
     }
     for (const passage of prepared.passages) {
@@ -158,7 +163,7 @@ export function parseCsvQuestions(csv: string, setIdValue?: string): { set: Retu
     try { correctAnswers = JSON.parse(row.correctAnswers) as unknown } catch { throw new Error(`第 ${index + 2} 行 correctAnswers 不是有效 JSON。`) }
     try { acceptedAnswers = row.acceptedAnswers ? JSON.parse(row.acceptedAnswers) as unknown : {} } catch { throw new Error(`第 ${index + 2} 行 acceptedAnswers 不是有效 JSON。`) }
     try { matches = row.matches ? JSON.parse(row.matches) as unknown[] : [] } catch { throw new Error(`第 ${index + 2} 行 matches 不是有效 JSON。`) }
-    return QuestionSchema.parse({ id: id(), setId: deterministicSetId, prompt: row.prompt, title: row.questionTitle || '', questionType: row.questionType, points: Number(row.points || 1), options, correctAnswers, acceptedAnswers, matches, explanation: row.explanation || '', tags: row.tags ? row.tags.split('|').map((tag) => tag.trim()).filter(Boolean) : [], createdAt: stamp, updatedAt: stamp })
+    return QuestionSchema.parse({ id: id(), setId: deterministicSetId, order: index, prompt: row.prompt, title: row.questionTitle || '', questionType: row.questionType, points: Number(row.points || 1), options, correctAnswers, acceptedAnswers, matches, explanation: row.explanation || '', tags: row.tags ? row.tags.split('|').map((tag) => tag.trim()).filter(Boolean) : [], createdAt: stamp, updatedAt: stamp })
   })
   return { set, questions }
 }
@@ -167,6 +172,10 @@ function stableHash(value: string) {
   let hash = 2166136261
   for (let index = 0; index < value.length; index++) { hash ^= value.charCodeAt(index); hash = Math.imul(hash, 16777619) }
   return (hash >>> 0).toString(36)
+}
+
+function compareQuestionOrder(a: Question, b: Question) {
+  return a.setId.localeCompare(b.setId) || (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
 }
 
 export function exportQuestionsCsv(questions: Question[], setTitle: string, skill: string, part: string) {
