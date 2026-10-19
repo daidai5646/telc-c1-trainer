@@ -45,7 +45,7 @@ export function Practice() {
         setQuestions(wrongIds ? combinedQuestions.filter((q) => wrongIds.includes(q.id)) : combinedQuestions)
         setAttachments(Object.fromEntries(attachmentGroups.map(({ setId: sourceId, passage, audio }) => [sourceId, { passage, audio }]))); setPassage(attachmentGroups[0]?.passage ?? null); setAudio(attachmentGroups[0]?.audio ?? null)
         setShowAnswers((savedSettings as (Settings & { id: string }) | undefined)?.showAnswersAfterSubmit ?? true)
-        const seconds = found.modeDefaultSeconds ?? (savedSettings as (Settings & { id: string }) | undefined)?.defaultExamSeconds ?? 90 * 60
+        const seconds = selectedSetIds.length > 1 ? (savedSettings as (Settings & { id: string }) | undefined)?.defaultExamSeconds ?? 90 * 60 : found.modeDefaultSeconds ?? (savedSettings as (Settings & { id: string }) | undefined)?.defaultExamSeconds ?? 90 * 60
         const initialMode = searchParams.get('mode') === 'exam' ? 'exam' : 'practice'
         setExamSeconds(seconds); setTimeLeft(draft?.timeLeft ?? seconds); setStartedAt(draft?.startedAt ?? Date.now()); setMode(selectedSetIds.length || questionOnly ? initialMode : draft?.mode ?? initialMode); setAnswers(draft?.answers ?? {}); setReady(true); setLoading(false)
       } catch (cause) { if (alive) { setError(cause instanceof Error ? cause.message : '载入题组失败。'); setLoading(false) } }
@@ -97,7 +97,7 @@ export function Practice() {
   function selectMode(next: 'practice' | 'exam') { setMode(next); setStartedAt(Date.now()); setAnswers({}); setResult(null); if (next === 'exam') setTimeLeft(examSeconds) }
   function updateAnswer(questionId: string, key: string, value: string | string[]) { setAnswers((current) => ({ ...current, [questionId]: { ...(current[questionId] ?? {}), [key]: value } })) }
   function restart() { setAnswers({}); setResult(null); setStartedAt(Date.now()); setTimeLeft(examSeconds) }
-  function redoWrong() { if (!result) return; const ids = result.answers.filter((a) => !a.isCorrect).map((a) => a.questionId); if (ids.length) navigate(`/practice/${result.setId}?wrong=${ids.join(',')}`); else restart() }
+  function redoWrong() { if (!result) return; const ids = result.answers.filter((a) => !a.isCorrect).map((a) => a.questionId); if (ids.length) navigate(result.setIds && result.setIds.length > 1 ? `/practice/exam?sets=${result.setIds.join(',')}&wrong=${ids.join(',')}&mode=exam` : `/practice/${result.setId}?wrong=${ids.join(',')}`); else restart() }
 
   if (loading) return <div className="page"><p>题组载入中…</p></div>
   if (error && !set) return <div className="page"><div className="alert error-alert">{error}</div><Link to="/library" className="button button-dark">返回题库</Link></div>
