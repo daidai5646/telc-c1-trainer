@@ -6,31 +6,52 @@ import { now, type Attempt, type Question, type StudySet, type Settings, type Pa
 
 export function Practice() {
   const { setId } = useParams(); const navigate = useNavigate(); const [searchParams] = useSearchParams()
-  const [set, setSet] = useState<StudySet | null>(null); const [questions, setQuestions] = useState<Question[]>([]); const [passage, setPassage] = useState<Passage | null>(null); const [audio, setAudio] = useState<AudioAsset | null>(null)
+  const [set, setSet] = useState<StudySet | null>(null); const [sourceSets, setSourceSets] = useState<StudySet[]>([]); const [questions, setQuestions] = useState<Question[]>([]); const [attachments, setAttachments] = useState<Record<string, { passage?: Passage; audio?: AudioAsset }>>({}); const [passage, setPassage] = useState<Passage | null>(null); const [audio, setAudio] = useState<AudioAsset | null>(null)
   const [answers, setAnswers] = useState<Record<string, UserAnswer>>({}); const [mode, setMode] = useState<'practice' | 'exam'>('practice'); const [startedAt, setStartedAt] = useState<number>(Date.now()); const [timeLeft, setTimeLeft] = useState(0); const [examSeconds, setExamSeconds] = useState(90 * 60); const [result, setResult] = useState<Attempt | null>(null); const [loading, setLoading] = useState(true); const [ready, setReady] = useState(false); const [isSubmitting, setIsSubmitting] = useState(false); const [error, setError] = useState('')
   const [showAnswers, setShowAnswers] = useState(true)
   const wrongIds = searchParams.get('wrong')?.split(',').filter(Boolean)
+  const selectedSetIds = searchParams.get('sets')?.split(',').filter(Boolean) ?? []
+  const selectedQuestionIds = searchParams.get('questions')?.split(',').filter(Boolean) ?? []
+  const composite = selectedSetIds.length > 1
+  const questionOnly = selectedQuestionIds.length > 0
+  const sourceKey = selectedSetIds.join(',') || selectedQuestionIds.join(',')
   const wrongKey = wrongIds?.slice().sort().join(',') ?? ''
-  const currentDraftId = draftIdFor(setId ?? '', wrongKey)
+  const currentDraftId = draftIdFor(setId ?? '', wrongKey || sourceKey)
   useEffect(() => {
     let alive = true
     async function load() {
       if (!setId) { setLoading(false); return }
       setLoading(true); setReady(false); setError(''); setResult(null); setSet(null)
       try {
-        const found = await db.sets.get(setId)
+        const favoriteQuestions = questionOnly ? (await Promise.all(selectedQuestionIds.map((questionId) => db.questions.get(questionId)))).filter((item): item is Question => Boolean(item)) : []
+        const selectedIds = selectedSetIds.length ? selectedSetIds : questionOnly ? [...new Set(favoriteQuestions.map((question) => question.setId))] : [setId]
+        const selectedSets = await Promise.all(selectedIds.map((selectedId) => db.sets.get(selectedId)))
+        const foundSets = selectedSets.filter((item): item is StudySet => Boolean(item))
+        const found = foundSets[0]
         if (!found) { setError('没有找到这个题组。'); setLoading(false); return }
-        const [allQuestions, article, audioAsset, savedSettings, draft] = await Promise.all([db.questions.where('setId').equals(setId).toArray(), found.passageId ? db.passages.get(found.passageId) : undefined, found.audioId ? db.audio.get(found.audioId) : undefined, db.settings.get('main'), db.drafts.get(currentDraftId)])
+        if (selectedSetIds.length && foundSets.length !== selectedSetIds.length) { setError('所选题组已不存在，请重新组卷。'); setLoading(false); return }
+        const [questionGroups, attachmentGroups, savedSettings, draft, allQuestions] = await Promise.all([
+          Promise.all(foundSets.map((item) => db.questions.where('setId').equals(item.id).toArray())),
+          Promise.all(foundSets.map(async (item) => ({ setId: item.id, passage: item.passageId ? await db.passages.get(item.passageId) : undefined, audio: item.audioId ? await db.audio.get(item.audioId) : undefined }))),
+          db.settings.get('main'), db.drafts.get(currentDraftId),
+          Promise.resolve(favoriteQuestions),
+        ])
         if (!alive) return
-        allQuestions.sort(compareQuestionOrder)
-        setSet(found); setQuestions(wrongIds ? allQuestions.filter((q) => wrongIds.includes(q.id)) : allQuestions); setPassage(article ?? null); setAudio(audioAsset ?? null)
+        const combinedQuestions = questionOnly ? allQuestions : questionGroups.flatMap((items) => items.sort(compareQuestionOrder))
+        if (selectedSetIds.length) combinedQuestions.sort((a, b) => selectedSetIds.indexOf(a.setId) - selectedSetIds.indexOf(b.setId) || compareQuestionOrder(a, b))
+        else if (questionOnly) for (let index = combinedQuestions.length - 1; index > 0; index--) { const swap = Math.floor(Math.random() * (index + 1)); [combinedQuestions[index], combinedQuestions[swap]] = [combinedQuestions[swap]!, combinedQuestions[index]!] }
+        else combinedQuestions.sort(compareQuestionOrder)
+        setSourceSets(foundSets); setSet(selectedSetIds.length > 1 ? { ...found, id: `exam:${selectedSetIds.join(':')}`, title: 'TELC C1 · 完整考试', part: 'Lesen + Hören', instruction: '' } : found)
+        setQuestions(wrongIds ? combinedQuestions.filter((q) => wrongIds.includes(q.id)) : combinedQuestions)
+        setAttachments(Object.fromEntries(attachmentGroups.map(({ setId: sourceId, passage, audio }) => [sourceId, { passage, audio }]))); setPassage(attachmentGroups[0]?.passage ?? null); setAudio(attachmentGroups[0]?.audio ?? null)
         setShowAnswers((savedSettings as (Settings & { id: string }) | undefined)?.showAnswersAfterSubmit ?? true)
         const seconds = found.modeDefaultSeconds ?? (savedSettings as (Settings & { id: string }) | undefined)?.defaultExamSeconds ?? 90 * 60
-        setExamSeconds(seconds); setTimeLeft(draft?.timeLeft ?? seconds); setStartedAt(draft?.startedAt ?? Date.now()); setMode(draft?.mode ?? 'practice'); setAnswers(draft?.answers ?? {}); setReady(true); setLoading(false)
+        const initialMode = searchParams.get('mode') === 'exam' ? 'exam' : 'practice'
+        setExamSeconds(seconds); setTimeLeft(draft?.timeLeft ?? seconds); setStartedAt(draft?.startedAt ?? Date.now()); setMode(selectedSetIds.length || questionOnly ? initialMode : draft?.mode ?? initialMode); setAnswers(draft?.answers ?? {}); setReady(true); setLoading(false)
       } catch (cause) { if (alive) { setError(cause instanceof Error ? cause.message : '载入题组失败。'); setLoading(false) } }
     }
     void load(); return () => { alive = false }
-  }, [setId, wrongKey])
+  }, [setId, wrongKey, sourceKey])
 
   const questionsRef = questions
   const setRef = set
@@ -45,7 +66,7 @@ export function Practice() {
     const graded = gradeSet(questionsRef, answersRef)
     const stamp = now()
     const attempt: Attempt = {
-      id: crypto.randomUUID(), setId: setRef.id, setTitle: setRef.title, skill: setRef.skill, part: setRef.part,
+      id: crypto.randomUUID(), setId: sourceSets[0]?.id ?? setRef.id, setIds: sourceSets.map((item) => item.id), setTitle: setRef.title, skill: setRef.skill, part: setRef.part,
       mode: modeRef, startedAt: new Date(startedAtRef).toISOString(), completedAt: stamp,
       durationSeconds: Math.max(0, Math.round((Date.now() - startedAtRef) / 1000)),
       answers: questionsRef.map((question) => {
@@ -59,13 +80,13 @@ export function Practice() {
       setResult(attempt)
     } catch (cause) { setError(cause instanceof Error ? `保存练习记录失败：${cause.message}` : '保存练习记录失败。') }
     finally { setIsSubmitting(false); submittingRef.current = false }
-  }, [setRef, questionsRef, answersRef, modeRef, startedAtRef, result, draftIdRef])
+  }, [setRef, sourceSets, questionsRef, answersRef, modeRef, startedAtRef, result, draftIdRef])
 
   useEffect(() => {
-    if (!ready || !set || result) return
+    if (!ready || !set || result || composite || questionOnly) return
     const timer = window.setTimeout(() => { void db.drafts.put({ id: currentDraftId, setId: set.id, mode, startedAt, timeLeft, answers, updatedAt: now() }).catch((cause: unknown) => setError(cause instanceof Error ? `保存作答草稿失败：${cause.message}` : '保存作答草稿失败。')) }, 250)
     return () => window.clearTimeout(timer)
-  }, [ready, set, result, currentDraftId, mode, startedAt, timeLeft, answers])
+  }, [ready, set, result, composite, questionOnly, currentDraftId, mode, startedAt, timeLeft, answers])
 
   useEffect(() => {
     if (mode !== 'exam' || result || !questions.length) return
@@ -81,7 +102,7 @@ export function Practice() {
   if (loading) return <div className="page"><p>题组载入中…</p></div>
   if (error && !set) return <div className="page"><div className="alert error-alert">{error}</div><Link to="/library" className="button button-dark">返回题库</Link></div>
   if (!set) return null
-  const isListening = set.skill === 'listening'
+  const isListening = composite ? false : set.skill === 'listening'
   const hasListeningMatching = isListening && questions.some((question) => question.questionType === 'matching')
   const readableTime = `${Math.floor(timeLeft / 60).toString().padStart(2, '0')}:${(timeLeft % 60).toString().padStart(2, '0')}`
   return <div className={`practice-page ${hasListeningMatching ? 'listening-matching-practice' : ''}`}>
@@ -90,22 +111,24 @@ export function Practice() {
     {error && <div className="alert error-alert" role="alert">{error}<button onClick={() => setError('')}>×</button></div>}
     {isListening && audio && <AudioPlayer asset={audio} />}
     {isListening && !audio && <div className="notice-card compact"><span>♫</span><p>该听力题组尚未关联音频。可返回“Meine Aufgaben”编辑题组并添加音频。</p></div>}
-    {(set.skill === 'reading' || isListening) && passage && <article className={`passage-card ${hasListeningMatching ? 'listening-transcript-card' : ''}`}><div className="passage-heading"><span>{isListening ? 'HÖRTEXT / TRANSKRIPT' : 'LESETEXT'}</span><strong>{passage.title}</strong></div><div className="passage-body">{passage.body.split('\n').map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div></article>}
+    {!composite && !questionOnly && (set.skill === 'reading' || isListening) && passage && <article className={`passage-card ${hasListeningMatching ? 'listening-transcript-card' : ''}`}><div className="passage-heading"><span>{isListening ? 'HÖRTEXT / TRANSKRIPT' : 'LESETEXT'}</span><strong>{passage.title}</strong></div><div className="passage-body">{passage.body.split('\n').map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div></article>}
     {!questions.length ? <div className="empty-card"><div><strong>{wrongIds ? '这个练习没有错题。' : '题组中还没有题目。'}</strong><p>先在题库中添加题目，然后开始练习。</p></div><Link className="button button-dark" to="/library">编辑题组</Link></div> : result ? <ResultPanel attempt={result} showAnswers={showAnswers} onRedo={redoWrong} onRestart={restart} /> : <>
       <div className="question-progress"><span>{questions.length} 道题</span><div><span style={{ width: `${questions.length ? Object.keys(answers).filter((key) => Object.values(answers[key] ?? {}).some((value) => Array.isArray(value) ? value.length : Boolean(value))).length / questions.length * 100 : 0}%` }} /></div><small>{Object.keys(answers).filter((key) => Object.values(answers[key] ?? {}).some((value) => Array.isArray(value) ? value.length : Boolean(value))).length}/{questions.length} 已作答</small></div>
-      <section className="practice-questions">{questions.map((question, index) => <QuestionCard key={question.id} question={question} number={index + 1} answer={answers[question.id] ?? {}} update={(key, value) => updateAnswer(question.id, key, value)} />)}</section>
+      <section className="practice-questions">{questions.map((question, index) => { const sectionStart = index === 0 || questions[index - 1]?.setId !== question.setId; const source = sourceSets.find((item) => item.id === question.setId); return <div key={question.id}>{(composite || questionOnly) && sectionStart && <div className="question-source-label">{source?.title ?? '收藏题目'} · {source?.skill === 'listening' ? '听力' : '阅读'}</div>}{(composite || questionOnly) && sectionStart && attachments[question.setId]?.passage && <article className="passage-card"><div className="passage-heading"><span>{source?.skill === 'listening' ? 'HÖRTEXT / TRANSKRIPT' : 'LESETEXT'}</span><strong>{attachments[question.setId]!.passage!.title}</strong></div><div className="passage-body">{attachments[question.setId]!.passage!.body.split('\n').map((paragraph, lineIndex) => <p key={lineIndex}>{paragraph}</p>)}</div></article>}{(composite || questionOnly) && sectionStart && source?.skill === 'listening' && attachments[question.setId]?.audio && <AudioPlayer asset={attachments[question.setId]!.audio!} />}<QuestionCard question={question} number={index + 1} answer={answers[question.id] ?? {}} update={(key, value) => updateAnswer(question.id, key, value)} /> </div> })}</section>
       <div className="submit-bar"><span>答题内容会自动保存在本机；答完后提交查看分数、正确答案和解析。</span><button className="button button-dark" disabled={isSubmitting} onClick={() => void submit()}>{isSubmitting ? '正在保存…' : '提交答案　→'}</button></div>
     </>}
   </div>
 }
 
 function QuestionCard({ question, number, answer, update }: { question: Question; number: number; answer: UserAnswer; update: (key: string, value: string | string[]) => void }) {
+  const [isFavorite, setIsFavorite] = useState(Boolean(question.isFavorite))
+  useEffect(() => setIsFavorite(Boolean(question.isFavorite)), [question.isFavorite])
   const selected = Array.isArray(answer.selectedOptionIds) ? answer.selectedOptionIds : typeof answer.selectedOptionIds === 'string' ? [answer.selectedOptionIds] : []
   function toggleOption(optionId: string) {
     if (question.questionType === 'single-choice') update('selectedOptionIds', [optionId])
     else update('selectedOptionIds', selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId])
   }
-  return <article className="practice-question"><div className="question-card-header"><span className="question-number">{String(number).padStart(2, '0')}</span><span className="pill">{typeName(question.questionType)}</span><span className="question-points">{question.points} 分</span></div><h2><PromptWithInputs prompt={question.prompt} question={question} answer={answer} update={update} /></h2>
+  return <article className="practice-question"><div className="question-card-header"><span className="question-number">{String(number).padStart(2, '0')}</span><span className="pill">{typeName(question.questionType)}</span><span className="question-points">{question.points} 分</span><button className={`favorite-button ${isFavorite ? 'is-favorite' : ''}`} aria-label={isFavorite ? '取消收藏' : '收藏题目'} aria-pressed={isFavorite} onClick={async () => { const next = !isFavorite; setIsFavorite(next); await db.questions.update(question.id, { isFavorite: next }) }}>{isFavorite ? '★' : '☆'}</button></div><h2><PromptWithInputs prompt={question.prompt} question={question} answer={answer} update={update} /></h2>
     {(question.questionType === 'single-choice' || question.questionType === 'multiple-choice') && <div className="answer-options">{question.options.map((option, index) => <label key={option.id} className={`answer-option ${selected.includes(option.id) ? 'option-selected' : ''}`}><input type={question.questionType === 'single-choice' ? 'radio' : 'checkbox'} name={`q-${question.id}`} checked={selected.includes(option.id)} onChange={() => toggleOption(option.id)} /><span className="option-letter">{String.fromCharCode(65 + index)}</span><span>{option.text}</span></label>)}</div>}
     {question.questionType === 'matching' && <div className="matching-list">{question.matches.map((match) => <label key={match.id}><span>{match.prompt}</span><select aria-label={`匹配 ${match.prompt}`} value={String(answer[match.id] ?? '')} onChange={(e) => update(match.id, e.target.value)}><option value="">请选择…</option>{matchChoices(question).map((option) => <option key={option.id} value={option.id}>{option.text}</option>)}</select></label>)}</div>}
     {question.questionType === 'true-false-not-stated' && <div className="truth-options">{[['true', 'Richtig'], ['false', 'Falsch'], ['not-stated', 'Nicht im Text']].map(([value, label]) => <label key={value} className={`truth-choice ${answer.value === value ? 'option-selected' : ''}`}><input type="radio" name={`truth-${question.id}`} value={value} checked={answer.value === value} onChange={() => update('value', value)} />{label}</label>)}</div>}

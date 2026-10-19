@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { db, saveAudio, deleteStudySet } from '../data/database'
 import { downloadFile, exportQuestionsCsv, importQuestionBank, parseCsvQuestions, previewImport, type DuplicateStrategy, type ImportPreview } from '../data/exchange'
 import { ImportBundleSchema, QuestionSchema, StudySetSchema, categoryForSet, defaultCategoryForSkill, id, now, type Question, type QuestionType, type StudyCategoryId, type StudySet } from '../domain/model'
 
 export function Library() {
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const skillFilter = params.get('skill')
   const [sets, setSets] = useState<StudySet[]>([])
   const [questions, setQuestions] = useState<Question[]>([])
@@ -19,6 +20,8 @@ export function Library() {
   const [strategy, setStrategy] = useState<DuplicateStrategy>('skip')
   const [message, setMessage] = useState('')
   const [defaultExam, setDefaultExam] = useState('telc C1 Hochschule')
+  const [examBuilder, setExamBuilder] = useState(false)
+  const [examSelection, setExamSelection] = useState<Record<string, string>>({})
 
   async function refresh() {
     const [allSets, allQuestions] = await Promise.all([db.sets.orderBy('updatedAt').reverse().toArray(), db.questions.toArray()])
@@ -47,13 +50,30 @@ export function Library() {
     { id: 'listening3' as const, title: '听力3', sets: visibleSets.filter((set) => resolvedCategory(set) === 'listening3') },
     { id: 'other' as const, title: '其他题组', sets: visibleSets.filter((set) => resolvedCategory(set) === 'other') },
   ]), [visibleSets])
+  const examCategories = useMemo(() => {
+    const allSets = sets
+    const ids = ['reading1', 'reading2', 'reading3', 'listening1', 'listening2', 'listening3'] as const
+    return ids.map((categoryId) => ({ id: categoryId, title: ({ reading1: '阅读1', reading2: '阅读2', reading3: '阅读3', listening1: '听力1', listening2: '听力2', listening3: '听力3' } as const)[categoryId], sets: allSets.filter((item) => resolvedCategory(item) === categoryId && questions.some((question) => question.setId === item.id)) }))
+  }, [sets, questions])
+  const favorites = useMemo(() => questions.filter((question) => question.isFavorite), [questions])
+
+  function openExamBuilder() {
+    const next: Record<string, string> = {}
+    for (const category of examCategories) if (category.sets.length) next[category.id] = category.sets[Math.floor(Math.random() * category.sets.length)]!.id
+    setExamSelection(next); setExamBuilder(true)
+  }
+
+  async function toggleFavorite(question: Question) {
+    await db.questions.update(question.id, { isFavorite: !question.isFavorite, updatedAt: now() })
+    await refresh()
+  }
 
   function renderSetCard(set: StudySet) {
     const setQuestions = questions.filter((question) => question.setId === set.id)
     const isOpen = expanded === set.id
     return <article className={`set-card ${isOpen ? 'set-open' : ''}`} key={set.id}>
       <div className="set-main"><button className="set-toggle" onClick={() => setExpanded(isOpen ? null : set.id)} aria-expanded={isOpen}><span className={`set-icon ${set.skill}`}>{set.skill === 'reading' ? 'Aa' : set.skill === 'listening' ? '♫' : '✎'}</span><span className="set-title"><strong>{set.title}</strong><small>{set.skill === 'reading' ? 'Lesen' : set.skill === 'listening' ? 'Hören' : set.skill} · {set.part} · {setQuestions.length} 道题</small></span><span className="set-chevron">{isOpen ? '⌃' : '⌄'}</span></button><div className="set-actions"><Link className="button button-small button-sage" to={`/practice/${set.id}`}>开始练习 →</Link><button className="text-link" onClick={() => { setError(''); setSetEditor(set) }}>编辑</button><button className="text-link" onClick={() => void exportCsv(set)}>CSV</button><button className="danger-link" onClick={() => void removeSet(set)}>删除</button></div></div>
-      {isOpen && <div className="set-expanded"><div className="set-meta"><span>{set.exam}</span>{set.instruction && <p>{set.instruction}</p>}</div>{set.passageId && <PassagePreview passageId={set.passageId} onEdit={() => setSetEditor(set)} />}{set.audioId && <AudioPreview audioId={set.audioId} />}<div className="question-list">{setQuestions.map((question, index) => <div className="question-row" key={question.id}><span className="question-number">{String(index + 1).padStart(2, '0')}</span><div className="question-row-copy"><strong>{question.title || question.prompt}</strong><small>{questionTypeName(question.questionType)} · {question.points} 分 · {question.difficulty}</small></div><button className="text-link" onClick={() => setQuestionEditor({ set, question })}>编辑</button><button className="text-link" onClick={async () => { const copy = QuestionSchema.parse({ ...question, id: id(), title: `${question.title || '题目'}（副本）`, createdAt: now(), updatedAt: now() }); await db.questions.add(copy); await refresh() }}>复制</button><button className="danger-link" onClick={async () => { if (window.confirm('删除这道题？历史练习中的题目快照会保留。')) { await db.questions.delete(question.id); await refresh() } }}>删除</button></div>)}</div><div className="set-footer"><span>{set.passageId ? '✓ 已关联文章' : '尚无文章'}　{set.audioId ? '✓ 已关联音频' : '尚无音频'}</span><button className="button button-small button-outline" onClick={() => setQuestionEditor({ set })}>＋ 添加题目</button></div></div>}
+      {isOpen && <div className="set-expanded"><div className="set-meta"><span>{set.exam}</span>{set.instruction && <p>{set.instruction}</p>}</div>{set.passageId && <PassagePreview passageId={set.passageId} onEdit={() => setSetEditor(set)} />}{set.audioId && <AudioPreview audioId={set.audioId} />}<div className="question-list">{setQuestions.map((question, index) => <div className="question-row" key={question.id}><span className="question-number">{String(index + 1).padStart(2, '0')}</span><div className="question-row-copy"><strong>{question.title || question.prompt}</strong><small>{questionTypeName(question.questionType)} · {question.points} 分 · {question.difficulty}</small></div><button className={`favorite-button ${question.isFavorite ? 'is-favorite' : ''}`} aria-label={question.isFavorite ? '取消收藏' : '收藏题目'} aria-pressed={Boolean(question.isFavorite)} onClick={() => void toggleFavorite(question)}>{question.isFavorite ? '★' : '☆'}</button><button className="text-link" onClick={() => setQuestionEditor({ set, question })}>编辑</button><button className="text-link" onClick={async () => { const copy = QuestionSchema.parse({ ...question, id: id(), title: `${question.title || '题目'}（副本）`, createdAt: now(), updatedAt: now() }); await db.questions.add(copy); await refresh() }}>复制</button><button className="danger-link" onClick={async () => { if (window.confirm('删除这道题？历史练习中的题目快照会保留。')) { await db.questions.delete(question.id); await refresh() } }}>删除</button></div>)}</div><div className="set-footer"><span>{set.passageId ? '✓ 已关联文章' : '尚无文章'}　{set.audioId ? '✓ 已关联音频' : '尚无音频'}</span><button className="button button-small button-outline" onClick={() => setQuestionEditor({ set })}>＋ 添加题目</button></div></div>}
     </article>
   }
 
@@ -97,9 +117,10 @@ export function Library() {
 
   return <div className="page">
     <header className="topbar"><div><div className="eyebrow">DEINE SAMMLUNG</div><h1>Meine Aufgaben</h1><p>题组按阅读1、阅读2、阅读3、听力1、听力2和听力3分类；JSON 导入时按考试部分自动归组。</p></div><button className="button button-dark" onClick={() => { setError(''); setSetEditor('new') }}>＋ 新建题组</button></header>
-    <section className="toolbar-card"><div><strong>题库工具</strong><small>JSON 完整题库 · CSV 平面客观题 · 音频随 JSON 导入导出</small></div><div className="button-row"><button className="button button-outline" onClick={() => void exportBank()}>导出 JSON</button><label className="button button-outline file-button">导入 JSON / CSV<input type="file" accept="application/json,.json,text/csv,.csv" onChange={(e) => void handleImportFile(e.target.files?.[0])} /></label></div></section>
+    <section className="toolbar-card"><div><strong>题库工具</strong><small>JSON 完整题库 · CSV 平面客观题 · 音频随 JSON 导入导出</small></div><div className="button-row"><button className="button button-dark" onClick={openExamBuilder}>组合考试</button><button className="button button-outline" disabled={!favorites.length} onClick={() => { const selected = favorites.slice().sort(() => Math.random() - .5).slice(0, Math.min(10, favorites.length)); navigate(`/practice/favorites?questions=${selected.map((question) => question.id).join(',')}&mode=practice`) }}>抽查收藏题目{favorites.length ? `（${favorites.length}）` : ''}</button><button className="button button-outline" onClick={() => void exportBank()}>导出 JSON</button><label className="button button-outline file-button">导入 JSON / CSV<input type="file" accept="application/json,.json,text/csv,.csv" onChange={(e) => void handleImportFile(e.target.files?.[0])} /></label></div></section>
     {error && <div className="alert error-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="关闭">×</button></div>}{message && <div className="alert success-alert" role="status">{message}<button onClick={() => setMessage('')} aria-label="关闭">×</button></div>}
     {preview && <div className="editor-card import-preview"><div className="editor-top"><div><span className="pill">IMPORT VORSCHAU</span><h2>导入预览</h2></div><button className="icon-button" onClick={() => { setPreview(null); setImportValue(null) }}>×</button></div><p>文件包含 {preview.sets} 个题组、{preview.questions} 道题、{preview.passages} 篇文章和 {preview.audio} 个音频。重复 ID：题组 {preview.duplicateSetIds.length}、题目 {preview.duplicateQuestionIds.length}、文章/音频 {preview.duplicateOtherIds.length}。</p><p>导入时会按 JSON 中的考试部分或题组名称，归入对应的六个阅读 / 听力组。</p><label>重复数据处理<select value={strategy} onChange={(e) => setStrategy(e.target.value as DuplicateStrategy)}><option value="skip">跳过重复（默认）</option><option value="replace">覆盖重复题组 / 题目</option><option value="copy">作为新副本导入</option></select></label><div className="button-row"><button className="button button-dark" onClick={() => void runImport()}>校验并导入</button><button className="button button-outline" onClick={() => { setPreview(null); setImportValue(null) }}>取消</button></div></div>}
+    {examBuilder && <div className="modal-backdrop" role="presentation"><section className="editor-card modal exam-builder" role="dialog" aria-modal="true" aria-labelledby="exam-builder-title"><div className="editor-top"><div><span className="pill">TELC C1 HOCHSCHULE</span><h2 id="exam-builder-title">组合考试</h2></div><button className="icon-button" aria-label="关闭" onClick={() => setExamBuilder(false)}>×</button></div><p>每个考试部分先随机抽取一个题组；你可以逐项更换，再开始整套考试。</p><div className="exam-set-list">{examCategories.map((category) => <label key={category.id}>{category.title}<select disabled={!category.sets.length} value={examSelection[category.id] ?? ''} onChange={(event) => setExamSelection((current) => ({ ...current, [category.id]: event.target.value }))}><option value="">{category.sets.length ? '选择题组…' : '此分类还没有题组'}</option>{category.sets.map((item) => <option key={item.id} value={item.id}>{item.title} · {setCount(item.id)} 题</option>)}</select></label>)}</div>{examCategories.some((category) => !category.sets.length) && <p className="field-hint">需要先为六个分类都导入至少一个题组，才能开始完整考试。</p>}<div className="button-row modal-actions"><button className="button button-outline" onClick={openExamBuilder}>重新随机抽取</button><button className="button button-dark" disabled={examCategories.some((category) => !examSelection[category.id])} onClick={() => navigate(`/practice/exam?sets=${examCategories.map((category) => examSelection[category.id]).join(',')}&mode=exam`)}>进入考试 →</button></div></section></div>}
     <div className="library-summary"><span>{skillFilter ? (skillFilter === 'reading' ? 'LESEN' : 'HÖREN') : 'ALLE FÄHIGKEITEN'}</span><strong>{visibleSets.length} 个题组</strong><small>· {visibleSets.reduce((sum, set) => sum + setCount(set.id), 0)} 道题</small>{skillFilter && <Link to="/library" className="text-link">清除筛选</Link>}</div>
     {!visibleSets.length && <div className="empty-card"><span className="empty-icon">▤</span><div><strong>题库还是空的。</strong><p>导入题组后，阅读和听力会分别归到对应分类。</p></div><button className="button button-dark" onClick={() => setSetEditor('new')}>创建第一个题组</button></div>}
     <div className="category-list">{categories.filter((category) => category.sets.length > 0 || (category.id !== 'other' && !skillFilter)).map((category) => {

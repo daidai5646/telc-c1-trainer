@@ -49,6 +49,7 @@ const BaseQuestionSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
   scoringRules: z.object({ partialCredit: z.boolean().default(false), ignoreCase: z.boolean().default(true), trim: z.boolean().default(true) }).default(() => ({ partialCredit: false, ignoreCase: true, trim: true })),
   order: z.number().int().nonnegative().optional(),
+  isFavorite: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -104,7 +105,7 @@ export const AudioAssetSchema = z.object({ id: z.string().min(1), name: z.string
 export type AudioAsset = z.infer<typeof AudioAssetSchema>
 
 export const AttemptAnswerSchema = z.object({ questionId: z.string(), answer: z.record(z.string(), z.union([z.string(), z.array(z.string())])), earnedPoints: z.number(), maxPoints: z.number(), isCorrect: z.boolean(), questionSnapshot: z.object({ prompt: z.string(), questionType: QuestionTypeSchema, options: z.array(OptionSchema), matches: z.array(MatchSchema), correctAnswers: z.record(z.string(), z.union([z.string(), z.array(z.string()), z.record(z.string(), z.string())])), acceptedAnswers: z.record(z.string(), z.array(z.string())), explanation: z.string(), tags: z.array(z.string()), difficulty: z.enum(['easy', 'medium', 'hard']) }) })
-export const AttemptSchema = z.object({ id: z.string(), setId: z.string(), setTitle: z.string(), skill: SkillSchema, part: z.string(), mode: z.enum(['practice', 'exam']), startedAt: z.string(), completedAt: z.string(), durationSeconds: z.number().nonnegative(), answers: z.array(AttemptAnswerSchema), earnedPoints: z.number().nonnegative(), maxPoints: z.number().nonnegative(), percentage: z.number().min(0).max(100) })
+export const AttemptSchema = z.object({ id: z.string(), setId: z.string(), setIds: z.array(z.string()).optional(), setTitle: z.string(), skill: SkillSchema, part: z.string(), mode: z.enum(['practice', 'exam']), startedAt: z.string(), completedAt: z.string(), durationSeconds: z.number().nonnegative(), answers: z.array(AttemptAnswerSchema), earnedPoints: z.number().nonnegative(), maxPoints: z.number().nonnegative(), percentage: z.number().min(0).max(100) })
 export type Attempt = z.infer<typeof AttemptSchema>
 
 export const PracticeDraftSchema = z.object({ id: z.string(), setId: z.string(), mode: z.enum(['practice', 'exam']), startedAt: z.number(), timeLeft: z.number().nonnegative(), answers: z.record(z.string(), z.record(z.string(), z.union([z.string(), z.array(z.string())]))), updatedAt: z.string() })
