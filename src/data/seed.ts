@@ -1,16 +1,9 @@
-import { db } from './database'
-
-const seedMarker = 'telc-c1-public-bank-v1'
+const seedMarker = 'telc-c1-public-bank-v2'
 
 export async function loadPublicQuestionBank() {
   if (localStorage.getItem(seedMarker)) return
 
-  // Keep an existing local library intact; only seed first-time, empty installations.
-  if (await db.sets.count()) {
-    localStorage.setItem(seedMarker, 'existing-library')
-    return
-  }
-
+  // Merge missing items by ID; an existing local library is never replaced.
   const encodedParts = await Promise.all(Array.from({ length: 7 }, async (_, index) => {
     const filename = `question-bank.part-${String(index).padStart(2, '0')}.txt`
     const response = await fetch(`${import.meta.env.BASE_URL}${filename}`)
